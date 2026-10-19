@@ -138,6 +138,9 @@ Implement the following pages:
 
 **Do not render thousands of article cards on a single page.**
 
+### Few UI elements to also include 
+- sidebar for easy navigation from page.
+
 ### Individual article page
 
 Use the route:
@@ -220,7 +223,7 @@ Implement:
 - RSS feed containing recent published articles.
 - Robots directives appropriate for a public blog.
 - Semantic HTML and accessible links.
-- Optimized image handling compatible with static deployment.
+- Optimized image handling compatible with static deployment, as described in section 12.
 - Sensible internal links and related articles.
 - Pagination metadata and discoverable archive navigation.
 - Correct 404 handling.
@@ -247,10 +250,11 @@ Example workflow:
 
 1. Create a new `.mdx` file inside `content/articles/`.
 2. Add valid frontmatter and write the article.
-3. Run the content validation command.
-4. Run the development server and preview the article.
-5. Commit and push to GitHub.
-6. Let Vercel build and deploy the static site.
+3. Add any new images, compressed, to `public/images/` (see section 12).
+4. Run the content validation command.
+5. Run the development server and preview the article.
+6. Commit and push to GitHub.
+7. Let Vercel build and deploy the static site.
 
 ## 10. Testing and Verification
 
@@ -297,3 +301,61 @@ Do not stop after generating a plan. Once the plan is clear, implement the appli
 Prioritize a working, maintainable static blog over unnecessary abstractions. If a requested feature conflicts with static-only deployment, explain the trade-off and implement a static-compatible alternative.
 
 At the end, provide a concise summary of what was implemented, how to add an article, and how the architecture can evolve if the blog eventually reaches 10,000 posts.
+
+## 12. Image Storage and Delivery
+
+**Decision:** Commit article images to the repository under `public/images/` and serve them with `next/image`, using Vercel's built-in image optimization. Do not add an external image CDN or storage service for the initial implementation.
+
+### Why
+
+- **No external accounts or payment details.** Everything runs on GitHub and Vercel Hobby, which are already required.
+- **Simplest workflow.** Images live next to the articles, are versioned with them, and appear in local development with no extra setup.
+- **The free quota is enough for a personal blog.** Vercel Hobby includes 5K image transformations per month. A transformation is counted only on a cache miss or stale entry (one source image × width × format × quality), not per visitor. At about 6 variants per image, that covers roughly 800 distinct images viewed per month.
+- **Graceful failure.** If the quota is exceeded, only images not yet optimized fail (HTTP 402). Previously cached images keep working, and Hobby never bills overages.
+
+### Implementation rules
+
+- Store article images in `public/images/` and reference them by root-relative paths, for example `coverImage: "/images/javascript-closures.webp"` or `![Alt text](/images/diagram.webp)` in MDX.
+- Route every article and cover image, including images rendered from MDX, through one image component (for example `<ArticleImage>`) wrapping `next/image`. If image delivery changes later, only this component and `next.config` change, never the articles.
+- Use a sensible `sizes` attribute on every image to limit the number of generated variants.
+- Treat images as immutable: when an image changes, give it a new file name instead of overwriting it.
+- Because images are immutable, raise `images.minimumCacheTTL` well above the Next.js 16 default of 4 hours (for example 31 days) so cached images are not re-optimized unnecessarily. Confirm the option against `node_modules/next/dist/docs/01-app/03-api-reference/02-components/image.md`.
+- Serve WebP only initially. Enabling AVIF roughly doubles the number of transformations.
+
+### Image hygiene (prevents repository bloat)
+
+Git keeps every committed image in history permanently, even after deletion, so keep images small before committing:
+
+- Export at no more than about 2,400px wide.
+- Compress to roughly 200–500 KB, preferring WebP.
+- Do not commit raw camera or screenshot originals. Keep those outside the repository.
+- The content validation command must check that every `coverImage` and inline image path in article content points to an existing file in `public/images/` with an allowed extension (`.webp`, `.avif`, `.jpg`, `.jpeg`, `.png`, `.gif`, `.svg`). It should warn when an image exceeds a configurable size threshold (for example 1 MB).
+
+At these sizes the repository can hold roughly 2,000–3,000 images before reaching about 1 GB.
+
+### When to revisit
+
+Revisit this decision if any of the following happens:
+
+- Vercel's usage dashboard shows more than about 3,500 image transformations per month (about 70% of the quota) for consecutive months.
+- `public/images/` approaches about 1 GB, or clones and Vercel builds become noticeably slow.
+- The site becomes commercial. Vercel Hobby is limited to non-commercial personal use.
+
+### Future options (no payment card required)
+
+Apply these in order, and only when a trigger above is reached:
+
+1. **Quota pressure only: ImageKit in front of the deployed site.** Images stay in the repository. ImageKit's free plan uses the deployed Vercel site as a "web folder" origin and handles resizing and delivery, with about 20–25 GB of bandwidth per month. Switch by adding a custom `images.loaderFile`. The free plan has hard limits and needs no credit card, so it cannot generate a bill.
+2. **Repository bloat: ImageKit media library storage.** Move new images out of the repository into ImageKit's included storage (about 5 GB on the free plan). Keep the same `/images/...` paths in articles so only the loader changes. Keep a local backup of originals, because ImageKit then holds the only hosted copy.
+
+Removing images that are already committed from Git history requires rewriting history (for example with `git filter-repo`) and a force-push. Treat that as a separate, deliberate maintenance task.
+
+### Rejected: Cloudflare R2 storage with ImageKit delivery
+
+Storing originals in a private Cloudflare R2 bucket (10 GB free, free egress) and delivering them through ImageKit was considered first. It offers the strongest long-term ownership of originals, because R2 is portable S3-compatible storage.
+
+It was rejected because:
+
+- **Cloudflare asks for a payment method before R2 can be enabled**, even for usage within the free tier. This project requires that no payment card is attached to any service.
+- **R2 bills overages instead of blocking them**, unlike ImageKit and Vercel Hobby, which stop at their free limits. That adds a small but real risk of unexpected charges.
+- **It adds operational overhead too early:** a sync script, access keys to manage, and two external dashboards, for a blog that does not yet have enough images to need them.
