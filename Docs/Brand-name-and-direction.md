@@ -1,6 +1,6 @@
-# Brand and Editorial Direction — The Afternoon Diaries (ATD)
+# Brand and Editorial Direction — The Afternoon Diaries (TAD)
 
-The website's name is **The Afternoon Diaries**, abbreviated as **ATD**.
+The website's name is **The Afternoon Diaries**, abbreviated as **TAD**.
 
 ## The Idea
 
@@ -17,12 +17,12 @@ Avoid making the website look like a corporate engineering portfolio, a document
 ## Brand Identity
 
 - Full name: The Afternoon Diaries
-- Short name: ATD
+- Short name: TAD
 - Possible tagline: "A little corner of the internet, for everything on my mind."
 - Alternative tagline: "Thoughts, ideas, and everything in between."
 - Brand personality: personal, introspective, curious, creative, understated, and authentic.
 
-Use "The Afternoon Diaries" prominently in the site header and browser metadata. ATD may be used for a compact logo, favicon, or mobile navigation.
+Use "The Afternoon Diaries" prominently in the site header and browser metadata. TAD may be used for a compact logo, favicon, or mobile navigation.
 
 Do not force afternoon imagery, clocks, coffee cups, or diary illustrations into every part of the design. The name should inspire the mood without becoming a literal visual gimmick.
 
@@ -82,7 +82,9 @@ Possible introduction:
 
 Treat this as placeholder copy that can be edited later.
 
-The homepage should prioritize the writing itself. Avoid dashboards, analytics counters, popularity metrics, and social-media-style engagement features.
+The homepage should prioritize the writing itself. Avoid dashboards, analytics counters and popularity rankings on the homepage.
+
+Conversation with readers matters. Comments with threaded replies, and view counts on articles, are planned as the first feature after v1 (see ADR-5 in [Architecture-decisions.md](./Architecture-decisions.md)). They should feel like a quiet conversation under the article, not a social-media feed.
 
 ## Article Reading Experience
 
@@ -105,23 +107,25 @@ Do not make every article look like a technical tutorial. Personal essays should
 
 The article format should allow the author to experiment with structure and tone.
 
-## Markdown and MDX Rendering
+## Markdown Rendering
 
-Use Streamdown as the preferred Markdown-rendering library, subject to a compatibility check against the installed version and the application's requirements.
+**Decision (2026-10-19):** Articles are written in plain Markdown (`.md`) and rendered on the server with `react-markdown` + `remark-gfm`, with `rehype-slug` for heading links and `rehype-pretty-code`/Shiki for code highlighting. The browser gets finished HTML. MDX is deferred until it is actually needed.
 
-Before implementing it:
+Why:
 
-1. Inspect the official package documentation and supported Next.js integration.
-2. Confirm that it can safely and correctly render complete, locally stored Markdown or MDX content in the intended rendering environment.
-3. Check support for GitHub Flavored Markdown, tables, lists, links, images, blockquotes, and code blocks.
-4. Verify whether MDX-specific JSX components require a separate compilation or rendering pipeline.
-5. Keep the renderer behind a reusable content-rendering component so the implementation can change without rewriting article pages.
+- Plain Markdown covers what the site needs now: text, headings, images, quotes, lists, links, tables and code blocks.
+- It is forgiving to write. MDX treats `<` and `{` as code, which can break the build in ordinary prose.
+- Fewer dependencies, so the author spends more time writing than maintaining.
 
-Important: Streamdown is optimized for streaming Markdown and is not automatically a replacement for every MDX compiler. Do not feed raw MDX into a plain Markdown renderer and assume JSX components will work.
+Streamdown was considered and dropped: `streamdown@2.7.1` is a client-only (`"use client"`) renderer built for streaming LLM output. It would send each article's full text and the parser to the browser.
 
-If Streamdown cannot meet the requirements for locally stored MDX, use a suitable MDX compilation pipeline for articles and reserve Streamdown for Markdown content where its capabilities are appropriate. Explain the trade-off rather than silently substituting a different library.
+Rules for the renderer:
 
-Keep the content authored locally in `.md` or `.mdx` files, with validated frontmatter and the static-generation architecture described in the main specification.
+1. It must support GitHub Flavored Markdown, tables, lists, links, images, blockquotes and syntax-highlighted code blocks.
+2. Images go through the shared `<ArticleImage>` component.
+3. Keep it behind one reusable `<ArticleContent>` component, so moving to MDX later changes only that component.
+
+Keep content authored locally in `.md` files, with validated frontmatter and the static-generation architecture described in the main specification.
 
 ## Editorial Freedom
 

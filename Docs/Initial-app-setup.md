@@ -1,6 +1,6 @@
-# Build a Scalable, Frontend-Only Blog with Next.js
+# Build a Scalable, Static-First Blog with Next.js
 
-Act as a senior Next.js engineer and software architect. Build a production-quality personal developer blog using Next.js, TypeScript, Markdown/MDX, and static hosting on Vercel.
+Act as a senior Next.js engineer and software architect. Build a production-quality personal developer blog using Next.js, TypeScript, Markdown, and static hosting on Vercel.
 
 Before writing code, inspect the existing repository, identify the current framework and structure, and provide a brief implementation plan. Preserve existing functionality and design where possible. If the repository is empty, initialize the project.
 
@@ -9,15 +9,16 @@ Before writing code, inspect the existing repository, identify the current frame
 Build a static, SEO-friendly blog with these principles:
 
 - Next.js with the App Router and TypeScript.
-- Frontend-only infrastructure: no database, custom backend, API routes, server actions, authentication server, or external CMS.
-- Articles stored as `.md` or `.mdx` files inside the Git repository.
+- Static-first infrastructure: no custom backend we write or host, no self-hosted database, no API routes, server actions or external CMS. Articles never depend on a runtime service.
+- Reader engagement (accounts, comments, replies, view counts) is added **after v1** using Firebase as a Backend-as-a-Service. See section 13 and ADR-5 in [Architecture-decisions.md](./Architecture-decisions.md).
+- Articles stored as `.md` files inside the Git repository. (MDX is deferred; see the note in section 2.)
 - Static site generation (SSG) wherever appropriate.
 - Compatible with deployment on Vercel.
 - Support hundreds or thousands of articles without requiring a fundamental architectural rewrite.
 - Clean, maintainable, modular, strongly typed code.
 - No unnecessary dependencies or overengineering.
 
-Important distinction: Next.js build-time code may run in Node.js during the build. This is acceptable. The deployed application must not depend on a custom runtime backend, database, or dynamic server rendering.
+Important distinction: Next.js build-time code may run in Node.js during the build. This is acceptable. The deployed application must not depend on a custom runtime backend, a self-hosted database, or dynamic server rendering. Article pages must render and work fully even if Firebase is unavailable.
 
 ## 2. Technology Stack
 
@@ -26,13 +27,18 @@ Use the following stack unless there is a compelling compatibility reason not to
 - Next.js App Router
 - TypeScript with strict mode
 - Tailwind CSS
-- MDX for rich article content
-- A reliable Markdown/MDX frontmatter parser and content-processing library
-- `gray-matter` or an equivalent parser for metadata
-- `remark-gfm` for GitHub Flavored Markdown
-- A syntax-highlighting solution such as Shiki
-- ESLint and Prettier
-- React-icons for icons, if needed
+- Plain Markdown (`.md`) for article content, rendered on the server with `react-markdown`
+- `gray-matter` for frontmatter
+- `remark-gfm` for GitHub Flavored Markdown (tables, strikethrough, task lists, footnotes)
+- `zod` for frontmatter validation
+- `rehype-slug` + `github-slugger` for heading ids and the table of contents
+- `rehype-pretty-code` + `shiki` for build-time syntax highlighting
+- `@tailwindcss/typography` for article typography
+- `react-icons` for icons
+- ESLint (already configured)
+
+> **Decision (2026-10-19): start with plain Markdown and a minimal dependency set.**
+> MDX, Prettier and a test framework are deferred, to be added only when actually needed. Small utilities (reading time, theme toggle) are written in the project instead of installed. Tests use Node's built-in `node:test` runner. Article rendering sits behind one `<ArticleContent>` component, so moving to MDX later changes that component, not the articles. See [Implementation-plan.md](./Implementation-plan.md).
 
 Select compatible, maintained packages. Avoid installing multiple libraries that solve the same problem.
 
@@ -42,9 +48,9 @@ Store articles in a structure similar to:
 
 content/
   articles/
-    javascript-closures.mdx
-    understanding-react-hooks.mdx
-    building-ai-agents.mdx
+    javascript-closures.md
+    understanding-react-hooks.md
+    building-ai-agents.md
 
 Each article must contain frontmatter, for example:
 
@@ -77,8 +83,8 @@ Requirements:
 - Derive reading time automatically when possible instead of requiring manual maintenance.
 - Generate descriptions and other useful metadata consistently.
 - Handle missing, invalid, or malformed frontmatter with clear build-time error messages.
-- Support Markdown and MDX, including code blocks, tables, links, images, and lists.
-- Do not execute arbitrary MDX supplied by visitors. Content is authored and reviewed by the site owner.
+- Support Markdown, including code blocks, tables, links, images, and lists.
+- Raw HTML inside Markdown is not rendered. Content is authored and reviewed by the site owner.
 
 ## 4. Article Index and Content Processing
 
@@ -110,9 +116,9 @@ Requirements:
 7. Keep the content-processing code separate from React components.
 8. Use a typed article metadata interface and validate frontmatter at build time.
 9. Make the index generation deterministic and suitable for incremental improvements later.
-10. Do not add a database or introduce a runtime indexing service.
+10. Do not add a database or introduce a runtime indexing service for articles. Firebase is used only for reader engagement (section 13), never for article content or metadata.
 
-For the initial implementation, use a build-generated JSON index or an equivalent efficient typed metadata manifest. Ensure the generated file is not committed as a second source of truth.
+> **Decision (2026-10-19):** no generated JSON index file. The content layer reads frontmatter with `fs.readFileSync` during the build and caches the typed, sorted metadata list in memory once per process. This meets the requirements above with one less build step. See D3 in [Implementation-plan.md](./Implementation-plan.md).
 
 ## 5. Pages and Features
 
@@ -150,7 +156,7 @@ Use the route:
 Include:
 
 - Article title, description, publication date, updated date, and reading time.
-- Rendered MDX content.
+- Rendered Markdown content.
 - Syntax-highlighted code blocks.
 - Table of contents generated from headings.
 - Responsive typography and accessible heading structure.
@@ -169,7 +175,7 @@ Include:
 - `/sitemap.xml`
 - `/robots.txt`
 
-Ensure every route is consistent with the static-only architecture.
+Ensure every route is consistent with the static-first architecture. The engagement pages added after v1 (`/inbox`, `/account`) are static shells that load their data in the browser from Firebase (section 13).
 
 ## 6. Static Generation and Scalability
 
@@ -178,10 +184,10 @@ The number of articles is unknown. Design for growth without prematurely optimiz
 Requirements:
 
 - Generate static article pages at build time.
-- Avoid runtime SSR, dynamic server dependencies, and database queries.
+- Avoid runtime SSR, dynamic server dependencies, and database queries for article content.
 - Do not assume that 10,000 pages will build efficiently without testing.
 - Keep metadata indexing efficient.
-- Avoid importing every MDX article into the homepage or archive.
+- Avoid loading every article body into the homepage or archive.
 - Use pagination for archive pages.
 - Avoid shipping all article content to the browser.
 - Keep search limited to the lightweight article metadata initially.
@@ -248,7 +254,7 @@ Provide:
 
 Example workflow:
 
-1. Create a new `.mdx` file inside `content/articles/`.
+1. Create a new `.md` file inside `content/articles/`.
 2. Add valid frontmatter and write the article.
 3. Add any new images, compressed, to `public/images/` (see section 12).
 4. Run the content validation command.
@@ -262,7 +268,7 @@ Add tests for the important content utilities and validation rules.
 
 At minimum, verify:
 
-- Valid Markdown and MDX parsing.
+- Valid Markdown parsing.
 - Invalid frontmatter detection.
 - Duplicate slug detection.
 - Draft exclusion.
@@ -298,7 +304,7 @@ Work incrementally:
 
 Do not stop after generating a plan. Once the plan is clear, implement the application in the repository.
 
-Prioritize a working, maintainable static blog over unnecessary abstractions. If a requested feature conflicts with static-only deployment, explain the trade-off and implement a static-compatible alternative.
+Prioritize a working, maintainable static blog over unnecessary abstractions. If a requested feature conflicts with static-first deployment, explain the trade-off and implement a static-compatible alternative. Features that need stored reader data go through Firebase (section 13), not a custom backend.
 
 At the end, provide a concise summary of what was implemented, how to add an article, and how the architecture can evolve if the blog eventually reaches 10,000 posts.
 
@@ -315,8 +321,8 @@ At the end, provide a concise summary of what was implemented, how to add an art
 
 ### Implementation rules
 
-- Store article images in `public/images/` and reference them by root-relative paths, for example `coverImage: "/images/javascript-closures.webp"` or `![Alt text](/images/diagram.webp)` in MDX.
-- Route every article and cover image, including images rendered from MDX, through one image component (for example `<ArticleImage>`) wrapping `next/image`. If image delivery changes later, only this component and `next.config` change, never the articles.
+- Store article images in `public/images/` and reference them by root-relative paths, for example `coverImage: "/images/javascript-closures.webp"` or `![Alt text](/images/diagram.webp)` in Markdown.
+- Route every article and cover image, including images rendered from Markdown, through one image component (for example `<ArticleImage>`) wrapping `next/image`. If image delivery changes later, only this component and `next.config` change, never the articles.
 - Use a sensible `sizes` attribute on every image to limit the number of generated variants.
 - Treat images as immutable: when an image changes, give it a new file name instead of overwriting it.
 - Because images are immutable, raise `images.minimumCacheTTL` well above the Next.js 16 default of 4 hours (for example 31 days) so cached images are not re-optimized unnecessarily. Confirm the option against `node_modules/next/dist/docs/01-app/03-api-reference/02-components/image.md`.
@@ -359,3 +365,25 @@ It was rejected because:
 - **Cloudflare asks for a payment method before R2 can be enabled**, even for usage within the free tier. This project requires that no payment card is attached to any service.
 - **R2 bills overages instead of blocking them**, unlike ImageKit and Vercel Hobby, which stop at their free limits. That adds a small but real risk of unexpected charges.
 - **It adds operational overhead too early:** a sync script, access keys to manage, and two external dashboards, for a blog that does not yet have enough images to need them.
+
+## 13. Reader Engagement (after v1)
+
+**Decision:** Use **Firebase as a Backend-as-a-Service** (free Spark plan, no payment card) for reader accounts, comments with threaded replies, and view counts. We do not write, host or maintain a backend or database of our own. Full reasoning, data model and review are in ADR-5 and ADR-6 of [Architecture-decisions.md](./Architecture-decisions.md).
+
+### Scope
+
+- **Firebase Authentication:** Google sign-in (email optional). Reading articles and comments needs no account; posting, replying and liking do.
+- **Cloud Firestore:** comments and replies (Reddit-style threads, about 4 levels deep), per-article `views` and `commentCount`, reader profiles.
+- **Pages:** `/inbox` for every signed-in reader (replies to their comments; the author also sees every new comment) and `/account` for settings (name, photo, own comments, sign out, delete account).
+- **Notifications:** in-app only, with an unread count in the header. Email notifications need Cloud Functions on the paid Blaze plan, so they are out of scope.
+
+### Rules
+
+1. **Articles never depend on Firebase.** If Firebase is down or over quota, only the comments section is affected.
+2. **One module owns Firebase.** All Auth and Firestore calls live in `src/lib/engagement/`. Components import from that module, never from `firebase/*`.
+3. **Security Rules are the backend.** Every permission (who can post, edit, delete, hide, read the author's inbox) is enforced in `firestore.rules` and tested with the Firebase Emulator and `@firebase/rules-unit-testing` before launch.
+4. **Load data lazily.** Load comments only when the reader reaches them, 20 at a time, and replies only when a thread is opened. Use `count()` queries for badges and counters. This keeps usage within the Spark plan's daily read limit.
+5. **Spam protection from day one:** Firebase App Check, a per-user posting interval checked in the rules, a maximum comment length, and a "hide" action for the author.
+6. **Backups:** a small script that exports comments and profiles, run regularly while the data is still small.
+7. **Privacy:** a short privacy page stating what is stored and how to delete an account.
+
