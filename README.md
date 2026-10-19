@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# The Afternoon Diaries (TAD)
 
-## Getting Started
+> A little corner of the internet, for everything on my mind.
 
-First, run the development server:
+A personal blog for essays, ideas, experiments and code. Articles are plain Markdown files in this repository, built into a static site with Next.js and served on Vercel. Comments and threaded replies will be added after v1, using Firebase.
+
+## Status
+
+**v1 in progress.** Phase 1 (setup) is done. Next: the content layer, then pages. See the build order in [Docs/Implementation-plan.md](Docs/Implementation-plan.md).
+
+## Architecture at a glance
+
+| Area | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router), React 19, TypeScript (strict) |
+| Styling | Tailwind CSS v4, `@tailwindcss/typography` |
+| Articles | Plain Markdown (`.md`) in `content/articles/`, frontmatter validated with `zod` |
+| Rendering | `react-markdown` + `remark-gfm` on the server; `shiki` for code highlighting at build time |
+| Images | Committed to `public/images/`, served with `next/image` |
+| Hosting | Vercel Hobby (static pages, no server of our own) |
+| Reader engagement (after v1) | Firebase Auth + Firestore as a Backend-as-a-Service (comments, replies, view counts) |
+
+Everything runs on free plans with no payment card. Articles never depend on Firebase: if it is down, only comments are affected.
+
+Why each choice was made: [Docs/Architecture-decisions.md](Docs/Architecture-decisions.md).
+
+## Getting started
+
+Requires **Node.js 24** or later.
 
 ```bash
+npm install
+cp .env.example .env.local   # optional locally; set NEXT_PUBLIC_SITE_URL in Vercel
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript check |
+| `npm run check` | Lint + type check |
 
-## Learn More
+`validate` (content checks) and `test` (`node:test`) are added with the content layer.
 
-To learn more about Next.js, take a look at the following resources:
+## Project structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+content/articles/   Markdown articles (the source of truth)
+public/images/      Article images (compressed, immutable file names)
+src/app/            Routes and layouts
+src/components/     UI components
+src/lib/site.ts     Site name, taglines, author and social links
+src/lib/content/    Content layer: read, validate and query articles
+Docs/               Planning and decision docs
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Writing an article
 
-## Deploy on Vercel
+Once the content layer is in place:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Create `content/articles/<slug>.md` with frontmatter (`title`, `slug`, `date`, `published` are required).
+2. Add images, compressed to WebP (about 200–500 KB, at most ~2,400px wide), to `public/images/`.
+3. Run `npm run validate`, then preview with `npm run dev`.
+4. Commit and push. Vercel builds and deploys the site.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Drafts use `published: false` and are left out of listings, the sitemap and RSS.
+
+## Docs
+
+- [Architecture-decisions.md](Docs/Architecture-decisions.md): why the site is built this way (ADR-1 to ADR-6)
+- [Implementation-plan.md](Docs/Implementation-plan.md): v1 plan, packages, folder structure, build order
+- [Initial-app-setup.md](Docs/Initial-app-setup.md): full requirements spec
+- [Brand-name-and-direction.md](Docs/Brand-name-and-direction.md): brand, tone and design direction
